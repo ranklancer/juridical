@@ -1,0 +1,34 @@
+# Code owners for Juridical.
+#
+# GitHub requests a review from the listed owner on any PR touching a matching
+# path; the LAST matching pattern wins. A ruleset ("Require review from Code
+# Owners") makes it an enforced gate. The whole tree defaults to the
+# maintainer, with the security-load-bearing surfaces listed explicitly.
+
+*                           @ranklancer
+
+# --- Authorization / audit core (as it lands, per the internal design spec) -----------------
+/internal/blast/            @ranklancer
+/internal/approve/          @ranklancer
+/internal/gate/             @ranklancer
+/internal/audit/            @ranklancer
+/internal/action/           @ranklancer
+/internal/api/              @ranklancer
+/internal/source/           @ranklancer
+/cmd/juridical/             @ranklancer
+
+# --- Build, release & CI/CD plumbing ---------------------------------------
+/.github/                   @ranklancer
+/Makefile                   @ranklancer
+/.goreleaser.yaml           @ranklancer
+
+# --- Security policy & scanning config -------------------------------------
+/SECURITY.md                @ranklancer
+/.gitleaks.toml             @ranklancer
+/.gitleaksignore            @ranklancer
+/.pre-commit-config.yaml    @ranklancer
+/tools/pii_scan.sh          @ranklancer
+
+# --- Dependency manifests ---------------------------------------------------
+/go.mod                     @ranklancer
+/go.sum                     @ranklancer
