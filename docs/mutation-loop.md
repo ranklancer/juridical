@@ -85,3 +85,24 @@ The `/v1` HTTP API, the optional bulwark
 `gate.ImageVerdict` seam (a no-op `ALLOW` stub, off by default in v0.1), and
 break-glass hardening are later, independently reviewed PRs. PR1 delivers the
 domain loop and its adversarial guarantees as library code with tests.
+
+## P1-d-1 — /v1 API security scaffolding (the internal design spec §9)
+
+`internal/api` wires the control-plane HTTP surface with stdlib `net/http`
+(Go 1.22 method+wildcard `ServeMux`). This first slice lands the security
+scaffolding and the read surface:
+
+- Global middleware: 64 KiB body cap + `application/json`-only (415) on write
+  methods, panic-recovery (zero-leak 500), and an opaque `X-Request-Id`.
+- Auth: `Authorization: Bearer <key>` matched against SHA-256 hashes
+  (`StaticKeyStore`), resolved to a `Scope` (observer < orchestrator < operator);
+  `tier <= scope` or 403.
+- Zero-leak error envelope `{error:{code,message,fc_rule?,audit_seq?}}` —
+  `message` is always a safe, redacted string.
+- Routes: `GET /v1/healthz` (no auth) and `GET /v1/audit` (observer; paginated
+  `since`/`event`/`limit`, `next_since` cursor, oldest-first, redacted records).
+
+Deferred to **P1-d-2**: the mutating lifecycle routes (`/v1/plans`,
+`/v1/approvals`, `/v1/executions`) with FC-rule→status mapping and the
+forward-auth human-identity path, plus the remaining read routes and
+`/v1/break-glass`.
