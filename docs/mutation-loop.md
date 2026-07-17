@@ -65,9 +65,23 @@ service (idempotent, no image change; rollback = re-run). Canonical over-reach
 cases that must refuse in Block mode: a wildcard/group `service` resolving to
 more than one service, or resolution spanning more than `max_hosts`.
 
+## `roll-deploy` (Tier M, compose)
+
+Rolls a single service to a **new image**. Params `{service, project,
+image_ref, backend: "compose"}`; the declared bound requires a single service,
+same as restart-service. Resolve enumerates live containers for the service and
+folds them into a reach; execute rolls the service to `image_ref`. Because
+`image_ref` is part of the plan params (and embedded in the plan target), it is
+covered by the plan hash: a token approved for image A can never authorize
+image B (T3). It is **less trivially reversible** than restart-service (rollback
+= redeploy the prior image). Image *trust* (signature/provenance) is the
+deferred `gate.ImageVerdict` seam — a no-op `ALLOW` stub, off by default in
+v0.1 — so roll-deploy applies the reference as given; the blast/approval/audit
+guarantees are identical to restart-service.
+
 ## What PR1 does not include
 
-The `/v1` HTTP API, the `roll-deploy` action, the optional bulwark
+The `/v1` HTTP API, the optional bulwark
 `gate.ImageVerdict` seam (a no-op `ALLOW` stub, off by default in v0.1), and
 break-glass hardening are later, independently reviewed PRs. PR1 delivers the
 domain loop and its adversarial guarantees as library code with tests.
