@@ -2,8 +2,10 @@ package audit
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -127,8 +129,19 @@ func readAll(path string) ([]Record, error) {
 			continue
 		}
 		var r Record
-		if err := json.Unmarshal(line, &r); err != nil {
-			return nil, err
+		// Strict decode: the audit chain is tamper-evident, so a record
+		// carrying an unknown or renamed field is treated as corruption and
+		// fails the load CLOSED (Open -> readAll -> Verify) rather than being
+		// silently coerced. Every legitimate field is a tagged Record field,
+		// so this never rejects a well-formed row. Missing fields are tolerated
+		// (adding a new Record field stays read-compatible with older logs);
+		// a renamed/removed field is deliberately treated as corruption — for a
+		// tamper-evident log, drift IS tamper, and a schema change must ship a
+		// migration rather than silently coercing history.
+		dec := json.NewDecoder(bytes.NewReader(line))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&r); err != nil {
+			return nil, fmt.Errorf("audit: refusing a malformed/unknown-field record (strict decode): %w", err)
 		}
 		out = append(out, r)
 	}
