@@ -52,3 +52,9 @@ PII_DENYLIST
 *.sbom.json
 *.sig
 *.pem.pub
+
+# Native fuzz corpus (advisory `make fuzz`) — generated locally by go test
+# -fuzz; interesting-but-non-crashing inputs live in the build cache, not
+# here. Only a genuine crasher regression file should ever be committed
+# under testdata/fuzz/, and only deliberately (git add -f).
+testdata/fuzz/
