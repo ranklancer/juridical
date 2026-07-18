@@ -1,8 +1,10 @@
 // Package api wires the juridical control-plane HTTP surface (the internal design spec §9, /v1).
-// This slice (P1-d-1) provides the security scaffolding — stdlib net/http only,
-// bearer-key auth + scope model, forward-auth human identity, a zero-leak error
+// P1-d-1 provided the security scaffolding — stdlib net/http only, bearer-key
+// auth + scope model, forward-auth human identity, a zero-leak error
 // envelope, request limits, and the read surface (healthz, paginated audit).
-// The mutating lifecycle routes (plans/approvals/executions) land in P1-d-2.
+// P1-d-2 (this slice, see mutating.go) adds the mutating lifecycle routes
+// (POST /v1/plans, /v1/approvals, /v1/executions) wired to the real domain
+// engine (internal/engine), fail-closed throughout.
 package api
 
 import (
@@ -51,14 +53,20 @@ type Server struct {
 	mux         *http.ServeMux
 	audit       AuditReader
 	authn       KeyAuthenticator
+	engine      Engine // domain engine backing the mutating routes (mutating.go, P1-d-2)
 	humanHeader string // forward-auth header carrying the SSO principal (OF6-5)
 }
 
 // Config configures a Server. humanHeader is the trusted forward-auth header
-// (set by the fronting proxy) that carries the human SSO principal.
+// (set by the fronting proxy) that carries the human SSO principal. Engine is
+// the domain engine (internal/engine.Engine satisfies it) backing the
+// mutating lifecycle routes; a nil Engine means those routes are registered
+// but will fail closed (panic -> recoverPanic -> zero-leak 500) if ever
+// invoked, which only happens on a serve-wiring bug, never in production.
 type Config struct {
 	Audit       AuditReader
 	Authn       KeyAuthenticator
+	Engine      Engine
 	HumanHeader string
 }
 
@@ -68,11 +76,13 @@ func New(cfg Config) *Server {
 	if hdr == "" {
 		hdr = "X-Forwarded-User"
 	}
-	s := &Server{mux: http.NewServeMux(), audit: cfg.Audit, authn: cfg.Authn, humanHeader: hdr}
+	s := &Server{mux: http.NewServeMux(), audit: cfg.Audit, authn: cfg.Authn, engine: cfg.Engine, humanHeader: hdr}
 	// healthz: no auth, liveness only.
 	s.mux.HandleFunc("GET /v1/healthz", s.handleHealthz)
 	// audit: observer scope; paginated, redacted.
 	s.mux.Handle("GET /v1/audit", s.withKey(ScopeObserver, s.handleAudit))
+	// mutating lifecycle routes (P1-d-2, see mutating.go).
+	s.registerMutating()
 	return s
 }
 

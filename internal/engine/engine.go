@@ -21,6 +21,33 @@ import (
 // DefaultTokenTTL is the Phase-1 default approval-token lifetime (the internal design spec §6.3).
 const DefaultTokenTTL = 300 * time.Second
 
+// Classification sentinels. The HTTP API (P1-d-2) maps engine errors to a
+// zero-leak status code via errors.Is against these, instead of matching on
+// error text (which stays free to evolve). Each wraps the concrete,
+// human-readable cause with %w/%v, so the existing FC3/FC6/FC7/"dormant
+// dimension"/"audit record could not be persisted" substring checks this
+// package's own tests already rely on keep passing unchanged.
+var (
+	// ErrUnknownPlan is returned when a plan_id does not name a stored plan.
+	ErrUnknownPlan = errors.New("engine: unknown plan_id")
+	// ErrValidation wraps a declared-bound validation failure at plan time (FC3).
+	ErrValidation = errors.New("engine: declared bound validation failed")
+	// ErrUnresolvable wraps an unresolvable/ambiguous target (FC7).
+	ErrUnresolvable = errors.New("engine: target unresolvable")
+	// ErrNotExecutable is returned when approval is attempted on a plan that is
+	// over-bound or otherwise not executable.
+	ErrNotExecutable = errors.New("engine: plan not executable")
+	// ErrOverBound wraps an execute-time reach recheck that exceeds the
+	// approved bound (FC6).
+	ErrOverBound = errors.New("engine: execute-time reach exceeds approved bound")
+	// ErrExecutionFailed wraps a failure from the action's own Execute step.
+	ErrExecutionFailed = errors.New("engine: action execution failed")
+	// ErrAuditWriteFailed wraps a durable audit-write failure on a
+	// side-effect-bearing path (approve mint, execute). The engine never
+	// reports such a step as a success without a durable audit record.
+	ErrAuditWriteFailed = errors.New("engine: audit record could not be persisted")
+)
+
 // AuditSink is the narrow audit-write dependency the engine needs; *audit.Log
 // satisfies it. Append MUST return a non-nil error if the record was not
 // durably persisted (the file-backed Log fsyncs before returning). The engine
@@ -86,17 +113,17 @@ func (e *Engine) Plan(ctx context.Context, req PlanRequest) (approve.Plan, error
 	}
 	if err := blast.ValidateDeclared(req.DeclaredBound, req.DormantDims); err != nil {
 		_ = e.refuse(req.Action, req.Backend, req.Project, req.Params, req.DeclaredBound, blast.Reach{}, req.ProposerKeyID, "", err.Error())
-		return approve.Plan{}, err
+		return approve.Plan{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	if err := act.ValidateBound(req.DeclaredBound); err != nil {
 		_ = e.refuse(req.Action, req.Backend, req.Project, req.Params, req.DeclaredBound, blast.Reach{}, req.ProposerKeyID, "", err.Error())
-		return approve.Plan{}, err
+		return approve.Plan{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	reach, target, err := act.Resolve(ctx, req.Params)
 	if err != nil {
 		// FC7: ambiguous / unresolvable -> dry-run report, never execute.
 		_ = e.refuse(req.Action, req.Backend, req.Project, req.Params, req.DeclaredBound, blast.Reach{}, req.ProposerKeyID, "", err.Error())
-		return approve.Plan{}, err
+		return approve.Plan{}, fmt.Errorf("%w: %v", ErrUnresolvable, err)
 	}
 	verdict, _ := blast.Evaluate(req.DeclaredBound, reach, e.Enforcement)
 	within := blast.Within(req.DeclaredBound, reach)
@@ -143,7 +170,7 @@ func (e *Engine) Approve(ctx context.Context, req ApproveRequest) (string, error
 	s, ok := e.plans[req.PlanID]
 	e.mu.Unlock()
 	if !ok {
-		return "", errors.New("engine: unknown plan_id")
+		return "", ErrUnknownPlan
 	}
 	if req.PlanHash != s.plan.PlanHash {
 		err := approve.ErrHashMismatch
@@ -151,7 +178,7 @@ func (e *Engine) Approve(ctx context.Context, req ApproveRequest) (string, error
 		return "", err
 	}
 	if !s.plan.Executable() {
-		err := fmt.Errorf("engine: plan is not executable (within_bound=%v verdict=%s)", s.plan.WithinBound, s.plan.Verdict)
+		err := fmt.Errorf("%w: within_bound=%v verdict=%s", ErrNotExecutable, s.plan.WithinBound, s.plan.Verdict)
 		_ = e.audit(audit.EventRefuse, s.plan, "REFUSED", s.proposer, req.Approver, err.Error())
 		return "", err
 	}
@@ -164,7 +191,7 @@ func (e *Engine) Approve(ctx context.Context, req ApproveRequest) (string, error
 		return "", err
 	}
 	if err := e.audit(audit.EventApprove, s.plan, "ALLOW", s.proposer, req.Approver, "token minted"); err != nil {
-		return "", fmt.Errorf("engine: approval token minted but its audit record could not be persisted (integrity violation): %w", err)
+		return "", fmt.Errorf("%w: approval token minted but its audit record could not be persisted (integrity violation): %v", ErrAuditWriteFailed, err)
 	}
 	return token, nil
 }
@@ -191,7 +218,7 @@ func (e *Engine) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult
 	s, ok := e.plans[req.PlanID]
 	e.mu.Unlock()
 	if !ok {
-		return ExecuteResult{}, errors.New("engine: unknown plan_id")
+		return ExecuteResult{}, ErrUnknownPlan
 	}
 	consumed, err := e.Tokens.Consume(req.Token, s.plan.PlanHash)
 	if err != nil {
@@ -206,7 +233,7 @@ func (e *Engine) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult
 	reach, _, err := act.Resolve(ctx, s.plan.Params)
 	if err != nil {
 		_ = e.audit(audit.EventRefuse, s.plan, "REFUSED", s.proposer, consumed.Approver, "execute-time resolve failed: "+err.Error())
-		return ExecuteResult{}, fmt.Errorf("engine: execute-time recheck failed (FC7): %w", err)
+		return ExecuteResult{}, fmt.Errorf("%w: execute-time recheck failed (FC7): %v", ErrUnresolvable, err)
 	}
 	verdict, breaches := blast.Evaluate(s.plan.DeclaredBound, reach, e.Enforcement)
 	if verdict == blast.VerdictBlock || !blast.Within(s.plan.DeclaredBound, reach) {
@@ -214,19 +241,19 @@ func (e *Engine) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult
 		p.ComputedReach = reach
 		_ = e.audit(audit.EventRefuse, p, "REFUSED", s.proposer, consumed.Approver,
 			fmt.Sprintf("execute-time reach exceeds approved bound (FC6): %v", breaches))
-		return ExecuteResult{}, fmt.Errorf("engine: execute-time reach exceeds approved bound (FC6): %v", breaches)
+		return ExecuteResult{}, fmt.Errorf("%w: execute-time reach exceeds approved bound (FC6): %v", ErrOverBound, breaches)
 	}
 	outcome, err := act.Execute(ctx, s.plan.Params)
 	if err != nil {
 		p := s.plan
 		p.ComputedReach = reach
 		_ = e.audit(audit.EventRefuse, p, "REFUSED", s.proposer, consumed.Approver, "execute failed: "+err.Error())
-		return ExecuteResult{}, err
+		return ExecuteResult{}, fmt.Errorf("%w: %v", ErrExecutionFailed, err)
 	}
 	p := s.plan
 	p.ComputedReach = reach
 	if err := e.audit(audit.EventExecute, p, "ALLOW", s.proposer, consumed.Approver, outcome); err != nil {
-		return ExecuteResult{}, fmt.Errorf("engine: CRITICAL: mutation executed but its audit record could not be persisted (integrity violation): %w", err)
+		return ExecuteResult{}, fmt.Errorf("%w: CRITICAL: mutation executed but its audit record could not be persisted (integrity violation): %v", ErrAuditWriteFailed, err)
 	}
 	return ExecuteResult{
 		ExecutionID: e.newID("exe"),
