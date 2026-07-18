@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -49,6 +51,47 @@ func TestBuildServer_UnknownScopeInKeysEnv_Errors(t *testing.T) {
 	_, _, err := buildServer([]string{"-dev"}, &errb, envWith(map[string]string{"JURIDICAL_KEYS": "auto-1:superuser:somekey"}))
 	if err == nil {
 		t.Fatal("expected an error for an unrecognized scope name")
+	}
+}
+
+// A tampered audit log at -audit-log must not be silently trusted: buildServer
+// wires the engine to audit.Open's return value directly, so a chain that
+// fails verification must abort server construction entirely (fail-closed) --
+// the engine must never be handed an appender for a compromised chain.
+func TestBuildServer_TamperedAuditLog_FailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	// A record whose stored record_hash cannot match its recomputed hash --
+	// representative of any tampered/corrupted log an operator might point
+	// -audit-log at.
+	tampered := `{"seq":1,"ts":"2024-01-01T00:00:00Z","event":"plan","record_hash":"00"}` + "\n"
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatalf("writing tampered fixture: %v", err)
+	}
+
+	var errb bytes.Buffer
+	srv, addr, err := buildServer([]string{"-audit-log", path}, &errb, noEnv)
+	if err == nil {
+		t.Fatal("buildServer must fail closed when -audit-log points at a tampered chain")
+	}
+	if srv != nil {
+		t.Fatal("buildServer must not return a usable *api.Server when the audit log fails to open")
+	}
+	if addr != "" {
+		t.Fatalf("buildServer must not return an addr on failure, got %q", addr)
+	}
+	if !strings.Contains(err.Error(), "audit") {
+		t.Fatalf("expected an audit-log-opening error, got: %v", err)
+	}
+
+	// The tampered file itself must be left untouched -- buildServer/audit.Open
+	// must not attempt any repair of a chain it refuses to trust.
+	after, rerr := os.ReadFile(path)
+	if rerr != nil {
+		t.Fatalf("re-reading tampered fixture: %v", rerr)
+	}
+	if string(after) != tampered {
+		t.Fatalf("buildServer must not modify a tampered audit log on disk;\nbefore=%q\nafter=%q", tampered, after)
 	}
 }
 
