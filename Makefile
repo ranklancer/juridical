@@ -52,8 +52,22 @@ smoke: build
 	./$(BINARY) -version >/dev/null
 	./$(BINARY) help >/dev/null
 
+# fuzz runs the native Go fuzz targets over untrusted-input security-boundary
+# parsers (audit record decode, approval token parse, plan_hash construction,
+# /v1 request-body decode, declared_bound parsing) for a short bounded time
+# each. Advisory: it exercises the fuzzing engine's random-mutation search on
+# top of what `test` already runs (the same FuzzXxx funcs execute over their
+# seed corpus as ordinary subtests during `make test`), so it is deliberately
+# NOT a gate-full dependency -- a long-tail fuzz finding is a signal to
+# investigate, not a merge blocker on every commit.
+FUZZTIME ?= 15s
 fuzz:
-	@echo "no fuzz targets in the founding scaffold; fuzz untrusted-input parsers as they land (the internal design spec)"
+	@echo "advisory: native fuzz targets, $(FUZZTIME) each; not part of gate-full's blocking path"
+	$(GO) test -run '^$$' -fuzz=FuzzReadAllRecord -fuzztime=$(FUZZTIME) ./internal/audit/
+	$(GO) test -run '^$$' -fuzz=FuzzTokenStoreConsume -fuzztime=$(FUZZTIME) ./internal/approve/
+	$(GO) test -run '^$$' -fuzz=FuzzPlanHash -fuzztime=$(FUZZTIME) ./internal/approve/
+	$(GO) test -run '^$$' -fuzz=FuzzDecodeStrictPlansRequest -fuzztime=$(FUZZTIME) ./internal/api/
+	$(GO) test -run '^$$' -fuzz=FuzzParseDeclaredBound -fuzztime=$(FUZZTIME) ./internal/api/
 
 # Full local gate, mirrored by ci.yml.
 gate-full: fmt vet build test cover lint gosec gitleaks pii smoke
