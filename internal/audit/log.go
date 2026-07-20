@@ -38,6 +38,14 @@ func Open(path string) (*Log, error) {
 	if bad, err := Verify(existing); err != nil {
 		return nil, errors.New("audit: refusing to open a tampered log at record " + itoa(bad) + ": " + err.Error())
 	}
+	// Chain verification alone cannot detect a truncated tail (an attacker
+	// who deletes trailing records, or empties the file, is left with a
+	// chain that still verifies). checkAnchor closes that gap by comparing
+	// the log's actual head against the out-of-band anchor file. See
+	// anchor.go for the full fail-closed semantics and threat model.
+	if err := checkAnchor(path, existing); err != nil {
+		return nil, err
+	}
 	if n := len(existing); n > 0 {
 		l.seq = existing[n-1].Seq
 		l.prev = existing[n-1].RecordHash
@@ -76,6 +84,18 @@ func (l *Log) Append(r Record) (Record, error) {
 		return Record{}, err
 	}
 	l.prev = h
+	// The record is now durably fsync'd on disk. Update the out-of-band
+	// anchor to match its new head so a future Open can detect if this (or
+	// any later) record is ever removed. If the anchor write fails we still
+	// fail the Append closed: we do NOT roll back l.seq/l.prev (the record
+	// really is committed to the file; a subsequent Append in this process
+	// must chain onto it, not reuse its seq), but we surface the error so
+	// the caller knows this append is not provably anchored. A future Open
+	// of this path will see the log's head ahead of the anchor and refuse
+	// to trust it until the anchor is explicitly re-established.
+	if err := writeAnchor(l.path, anchorState{Seq: r.Seq, RecordHash: r.RecordHash}); err != nil {
+		return Record{}, fmt.Errorf("audit: record appended but anchor update failed (fail closed): %w", err)
+	}
 	return r, nil
 }
 
@@ -135,7 +155,7 @@ func readAll(path string) ([]Record, error) {
 		// silently coerced. Every legitimate field is a tagged Record field,
 		// so this never rejects a well-formed row. Missing fields are tolerated
 		// (adding a new Record field stays read-compatible with older logs);
-		// a renamed/removed field is deliberately treated as corruption — for a
+		// a renamed/removed field is deliberately treated as corruption -- for a
 		// tamper-evident log, drift IS tamper, and a schema change must ship a
 		// migration rather than silently coercing history.
 		dec := json.NewDecoder(bytes.NewReader(line))
