@@ -31,7 +31,7 @@ func TestRun_NoArgsPrintsUsage(t *testing.T) {
 func TestRun_KnownCommandNotImplemented(t *testing.T) {
 	var out, errb bytes.Buffer
 	// serve is implemented as of P1-d-2 (see serve_test.go); action/plan/
-	// approve/audit remain scaffold stubs.
+	// approve remain scaffold stubs; audit is implemented as of the internal design spec-AUDITCLI.
 	if code := run([]string{"action"}, &out, &errb); code != 3 {
 		t.Fatalf("exit=%d, want 3 (not implemented)", code)
 	}

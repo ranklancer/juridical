@@ -1,10 +1,11 @@
 // Command juridical is the entry point for the Juridical control plane.
 //
 // `main` resolves build metadata, prints version/usage, and dispatches
-// `serve` (see serve.go, P1-d-2) to run the control-plane HTTP API. The
-// remaining Phase-1 subcommands (action, plan, approve, audit) are declared
-// in the usage text and land in later, independently reviewed pull requests
-// per the internal design spec.
+// `serve` (see serve.go, P1-d-2) to run the control-plane HTTP API, and
+// `audit` (see audit.go, the internal design spec-AUDITCLI) to inspect/recover the
+// out-of-band anchor. The remaining Phase-1 subcommands (action, plan,
+// approve) are declared in the usage text and land in later, independently
+// reviewed pull requests per the internal design spec.
 package main
 
 import (
@@ -23,12 +24,12 @@ Usage:
 
 Commands:
   serve      run the control-plane HTTP API (see 'juridical serve -help')
+  audit      inspect/recover the audit log's anchor (see 'juridical audit -help')
 
 Commands (Phase 1 - not yet implemented in this scaffold):
   action     inspect the registered action set
   plan       compute a blast-radius-bounded plan for an action
   approve    mint or verify an approval token for a plan
-  audit      read the append-only, hash-chained audit log
 
 Global flags:
   -version   print build metadata and exit
@@ -62,9 +63,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch rest[0] {
 	case "serve":
 		return runServe(rest[1:], stdout, stderr, os.Getenv)
-	case "action", "plan", "approve", "audit":
+	case "action", "plan", "approve":
 		fmt.Fprintf(stderr, "juridical: %q is not implemented in this scaffold (Phase 1, see the internal design spec)\n", rest[0])
 		return 3
+	case "audit":
+		return runAudit(rest[1:], stdout, stderr)
 	case "help":
 		fmt.Fprint(stdout, usage)
 		return 0
