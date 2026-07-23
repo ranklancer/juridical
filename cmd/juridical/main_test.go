@@ -6,7 +6,20 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.uber.org/goleak"
 )
+
+// TestMain wires goleak across every test in package main (cmd/juridical) --
+// the only production package in this module that owns a goroutine-spawning
+// path: runServe's httpSrv.ListenAndServe()/Serve() (see serve.go). No
+// blanket ignores: TestServe_Lifecycle_StartsServesAndShutsDownCleanly in
+// serve_test.go actually starts and gracefully stops that server, so this
+// VerifyTestMain is load-bearing rather than a no-op check over tests that
+// never touch the goroutine-owning code path.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestRun_VersionFlag(t *testing.T) {
 	var out, errb bytes.Buffer

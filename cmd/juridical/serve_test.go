@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func noEnv(string) string { return "" }
@@ -145,5 +149,90 @@ func TestValidateLoopbackAddr(t *testing.T) {
 		if (err != nil) != c.wantErr {
 			t.Errorf("validateLoopbackAddr(%q) err=%v, wantErr=%v", c.addr, err, c.wantErr)
 		}
+	}
+}
+
+// TestServe_Lifecycle_StartsServesAndShutsDownCleanly is the load-bearing
+// goleak proof for cmd/juridical: it is the only production package that
+// spawns goroutines it owns (net/http's Serve/ListenAndServe accept loop and
+// per-connection goroutines, started by runServe -- see serve.go). No other
+// test in this package ever binds a real listener; they all drive the
+// handler directly via httptest.NewRecorder/ServeHTTP. Without this test,
+// TestMain's goleak.VerifyTestMain(m) would pass vacuously.
+//
+// It builds the exact same *http.Server runServe constructs (via the shared
+// newHTTPServer helper), starts Serve on a real loopback listener, polls
+// until the server actually answers a request (proving the accept-loop
+// goroutine is really running), then drives the real graceful-shutdown path
+// -- http.Server.Shutdown -- and joins the Serve goroutine before returning.
+// If Shutdown is skipped or Serve's goroutine is never joined, this test
+// hangs/leaks and goleak.VerifyTestMain fails the whole package (verified
+// manually: temporarily replacing the Shutdown call below with nothing
+// leaves the Serve goroutine and its listener running past test end, and
+// `go test -race` reports it via goleak with a `net/http.(*conn).serve`
+// stack -- restored before commit).
+func TestServe_Lifecycle_StartsServesAndShutsDownCleanly(t *testing.T) {
+	var errb bytes.Buffer
+	srv, _, err := buildServer([]string{"-dev"}, &errb, noEnv)
+	if err != nil {
+		t.Fatalf("buildServer: %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listening: %v", err)
+	}
+
+	httpSrv := newHTTPServer(ln.Addr().String(), srv)
+
+	served := make(chan error, 1)
+	go func() {
+		served <- httpSrv.Serve(ln)
+	}()
+
+	// Wait until the server is actually accepting and answering connections
+	// -- proves the goroutine-owning Serve() path really started, not just
+	// that the goroutine was scheduled.
+	healthzURL := "http://" + ln.Addr().String() + "/v1/healthz"
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		reqCtx, reqCancel := context.WithTimeout(context.Background(), time.Second)
+		req, reqErr := http.NewRequestWithContext(reqCtx, http.MethodGet, healthzURL, nil)
+		if reqErr != nil {
+			reqCancel()
+			t.Fatalf("building healthz request: %v", reqErr)
+		}
+		resp, getErr := http.DefaultClient.Do(req)
+		reqCancel()
+		if getErr == nil {
+			resp.Body.Close()
+			lastErr = nil
+			break
+		}
+		lastErr = getErr
+		time.Sleep(10 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("server never became reachable: %v", lastErr)
+	}
+
+	// The real graceful-shutdown path: http.Server.Shutdown drains the
+	// accept loop and idle connections, causing Serve to return
+	// http.ErrServerClosed. This is the same exported method a
+	// signal-triggered shutdown would call in production.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	select {
+	case err := <-served:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Fatalf("Serve returned unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Serve to return after Shutdown -- goroutine leaked")
 	}
 }

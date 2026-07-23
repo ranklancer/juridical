@@ -162,6 +162,23 @@ func buildServer(args []string, stderr io.Writer, getenv func(string) string) (*
 	return srv, cfg.addr, nil
 }
 
+// newHTTPServer builds the *http.Server with the timeouts serve enforces
+// (the internal design spec §9 hardening) wrapping the given handler. Extracted out of
+// runServe (pure construction, no behavior change) so tests can exercise the
+// exact same goroutine-owning Serve/ListenAndServe lifecycle that runServe
+// runs in production, including a real graceful Shutdown, without binding
+// to runServe's fixed -addr-derived listener.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
 // runServe implements `juridical serve`.
 func runServe(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
 	srv, addr, err := buildServer(args, stderr, getenv)
@@ -169,14 +186,7 @@ func runServe(args []string, stdout, stderr io.Writer, getenv func(string) strin
 		fmt.Fprintf(stderr, "juridical: serve: %v\n", err)
 		return 2
 	}
-	httpSrv := &http.Server{
-		Addr:              addr,
-		Handler:           srv,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+	httpSrv := newHTTPServer(addr, srv)
 	fmt.Fprintf(stdout, "juridical: listening on %s\n", addr)
 	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(stderr, "juridical: serve: %v\n", err)
