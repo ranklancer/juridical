@@ -46,7 +46,7 @@ request → plan (blast radius) → gate (Off/Warn/Block) → approval token →
 ## Design at a glance
 
 - **Language:** Go 1.22, a single static binary (`CGO_ENABLED=0`) - the design notes.
-- **License:** MIT.
+- **License:** AGPL-3.0-only.
 - **Quality gate:** `make gate-full` - fmt, vet, build, race tests with a
   coverage floor, `golangci-lint`, `gosec`, `gitleaks`, a PII/infra scan, a
   smoke check, and fuzzing of untrusted-input parsers. CI runs the identical
@@ -91,4 +91,4 @@ under [`adr/`](adr/).
 
 ## License
 
-MIT - see [`LICENSE`](LICENSE). Copyright (c) 2026 juridical-docker.
+GNU Affero General Public License, version 3.0 only ([AGPL-3.0-only](LICENSE)) — see [`NOTICE`](NOTICE) for the commercial dual-license option. Copyright (C) 2026 ranklancer.
