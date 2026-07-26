@@ -1,5 +1,10 @@
 # Juridical
 
+[![CI](https://github.com/ranklancer/juridical/actions/workflows/ci.yml/badge.svg)](https://github.com/ranklancer/juridical/actions/workflows/ci.yml)
+[![Secret scan](https://github.com/ranklancer/juridical/actions/workflows/sanitization.yml/badge.svg)](https://github.com/ranklancer/juridical/actions/workflows/sanitization.yml)
+[![Go 1.22](https://img.shields.io/badge/go-1.22-00ADD8.svg)](go.mod)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+
 **Bound the blast radius. Require the approval. Keep the receipt.**
 
 Juridical is a control plane that sits in front of operational actions - restart
