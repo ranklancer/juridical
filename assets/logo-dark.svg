@@ -1,23 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs>
-    <linearGradient id="cy" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0"  stop-color="#9DF7FF"/>
-      <stop offset="0.5" stop-color="#3ED6F2"/>
-      <stop offset="1"  stop-color="#0E9FC4"/>
-    </linearGradient>
-    <radialGradient id="tile" cx="0.5" cy="0.5" r="0.75">
-      <stop offset="0" stop-color="#0E2530"/>
-      <stop offset="1" stop-color="#050D12"/>
-    </radialGradient>
-  </defs>
-  <rect x="6" y="6" width="500" height="500" rx="46" fill="url(#tile)" stroke="#12333F" stroke-width="2"/>
+  <rect x="6" y="6" width="500" height="500" rx="46" fill="#0A1C24" stroke="#12333F" stroke-width="2"/>
   <g fill="none">
-    <polygon points="256,86 426,256 256,426 86,256" fill="none" stroke="url(#cy)" stroke-width="9" stroke-linejoin="miter"/>
-    <polygon points="256,120 392,256 256,392 120,256" fill="none" stroke="url(#cy)" stroke-width="4" opacity="0.55"/>
-    <line x1="256" y1="132" x2="256" y2="326" stroke="url(#cy)" stroke-width="4" opacity="0.6"/>
-    <line x1="168" y1="198" x2="344" y2="198" stroke="url(#cy)" stroke-width="9" stroke-linecap="round"/>
-    <line x1="168" y1="198" x2="168" y2="244" stroke="url(#cy)" stroke-width="4"/><path d="M134,244 A34,17 0 0 0 202,244" fill="none" stroke="url(#cy)" stroke-width="5" stroke-linecap="round"/><line x1="344" y1="198" x2="344" y2="244" stroke="url(#cy)" stroke-width="4"/><path d="M310,244 A34,17 0 0 0 378,244" fill="none" stroke="url(#cy)" stroke-width="5" stroke-linecap="round"/>
-    <polygon points="267,198 262,208 250,208 245,198 250,188 262,188" fill="#0B1B22" stroke="url(#cy)" stroke-width="4"/>
-    <path d="M214,312 Q256,280 298,312 Q256,344 214,312 Z" fill="#0B1B22" stroke="url(#cy)" stroke-width="5"/><circle cx="256" cy="312" r="9" fill="url(#cy)"/>
+    <polygon points="256,86 426,256 256,426 86,256" fill="none" stroke="#3ED6F2" stroke-width="9" stroke-linejoin="miter"/>
+    <polygon points="256,120 392,256 256,392 120,256" fill="none" stroke="#3ED6F2" stroke-width="4" opacity="0.55"/>
+    <line x1="256" y1="132" x2="256" y2="326" stroke="#3ED6F2" stroke-width="4" opacity="0.6"/>
+    <line x1="168" y1="198" x2="344" y2="198" stroke="#3ED6F2" stroke-width="9" stroke-linecap="round"/>
+    <line x1="168" y1="198" x2="168" y2="244" stroke="#3ED6F2" stroke-width="4"/><path d="M134,244 A34,17 0 0 0 202,244" fill="none" stroke="#3ED6F2" stroke-width="5" stroke-linecap="round"/><line x1="344" y1="198" x2="344" y2="244" stroke="#3ED6F2" stroke-width="4"/><path d="M310,244 A34,17 0 0 0 378,244" fill="none" stroke="#3ED6F2" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="267,198 262,208 250,208 245,198 250,188 262,188" fill="#0B1B22" stroke="#3ED6F2" stroke-width="4"/>
+    <path d="M214,312 Q256,280 298,312 Q256,344 214,312 Z" fill="#0B1B22" stroke="#3ED6F2" stroke-width="5"/><circle cx="256" cy="312" r="9" fill="#3ED6F2"/>
   </g>
 </svg>
