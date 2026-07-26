@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-dark.svg" alt="Juridical — the Juridical (Forerunner mark)" width="200" height="200">
+</p>
+
 # Juridical
 
 [![CI](https://github.com/ranklancer/juridical/actions/workflows/ci.yml/badge.svg)](https://github.com/ranklancer/juridical/actions/workflows/ci.yml)
